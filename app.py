@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import joblib
+from sklearn.metrics import accuracy_score
 
 # --- Fungsi untuk memuat artefak (model, scaler, dll.) ---
 @st.cache_resource
@@ -16,18 +17,6 @@ def load_artifacts():
 # --- Memuat artefak di awal ---
 artifacts = load_artifacts()
 
-if artifacts is None:
-    st.error(
-        "File 'artifacts_rf.pkl' tidak ditemukan. "
-        "Pastikan file model sudah dibuat dan berada di repositori yang sama dengan aplikasi ini."
-    )
-    st.stop()
-
-model = artifacts['model']
-imputer = artifacts['imputer']
-scaler = artifacts['scaler']
-features = artifacts['features']
-
 # --- Konfigurasi Halaman Aplikasi ---
 st.set_page_config(
     page_title="Prediksi Opini WTP Pemda",
@@ -39,59 +28,100 @@ st.set_page_config(
 st.title("🏆 Aplikasi Prediksi Opini Wajar Tanpa Pengecualian (WTP)")
 st.write(
     """
-    Selamat datang di aplikasi prediksi opini BPK. Aplikasi ini menggunakan model *machine learning*
-    (**Random Forest**) untuk memprediksi apakah suatu pemerintah daerah (kabupaten)
-    berpotensi meraih opini **Wajar Tanpa Pengecualian (WTP)** berdasarkan 11 indikator keuangannya.
+    Aplikasi ini menggunakan model **Random Forest** untuk memprediksi opini BPK.
+    Anda dapat melakukan **prediksi tunggal** melalui sidebar di sebelah kiri, atau melakukan
+    **uji massal (bulk test)** dengan mengunggah file CSV di bawah ini.
     """
 )
 
-# --- Antarmuka Input di Sidebar ---
+# Memeriksa apakah artefak berhasil dimuat sebelum melanjutkan
+if artifacts is None:
+    st.error(
+        "File 'artifacts_rf.pkl' tidak ditemukan. "
+        "Pastikan file model sudah dibuat dan berada di repositori yang sama dengan aplikasi ini."
+    )
+    st.stop()
+
+# Membuka artefak
+model = artifacts['model']
+imputer = artifacts['imputer']
+scaler = artifacts['scaler']
+features = artifacts['features']
+
+# ==============================================================================
+# Bagian 1: Prediksi Tunggal (di Sidebar)
+# ==============================================================================
 with st.sidebar:
-    st.header("Masukkan Indikator Keuangan:")
+    st.header("Prediksi Tunggal")
+    st.write("Masukkan 11 Indikator Keuangan:")
     input_data = {}
-    # Membuat input field untuk setiap fitur/indikator
     for feature in features:
         input_data[feature] = st.number_input(
             label=f"{feature}",
             step=0.01,
-            format="%.4f"
+            format="%.4f",
+            key=f"single_{feature}" # Kunci unik untuk input tunggal
         )
-
-# --- Tombol untuk Melakukan Prediksi ---
-if st.sidebar.button("🚀 Lakukan Prediksi"):
-    # 1. Ubah data input menjadi DataFrame
-    input_df = pd.DataFrame([input_data])
     
-    st.subheader("Data Indikator yang Dimasukkan:")
-    st.dataframe(input_df)
+    if st.button("🚀 Lakukan Prediksi Tunggal"):
+        input_df = pd.DataFrame([input_data])[features]
+        input_imputed = imputer.transform(input_df)
+        input_scaled = scaler.transform(input_imputed)
+        prediction = model.predict(input_scaled)
+        prediction_proba = model.predict_proba(input_scaled)
 
-    # 2. Lakukan pra-pemrosesan pada data input (imputasi & scaling)
-    # Pastikan urutan kolom sesuai dengan saat training
-    input_df = input_df[features]
-    input_imputed = imputer.transform(input_df)
-    input_scaled = scaler.transform(input_imputed)
+        st.subheader("Hasil Prediksi:")
+        if prediction[0] == 1:
+            st.success("Diprediksi **MERAIH OPINI WTP**.")
+        else:
+            st.error("Diprediksi **TIDAK MERAIH OPINI WTP**.")
+        
+        st.write("Probabilitas:")
+        st.write(f"WTP: {prediction_proba[0][1]:.2%}")
+        st.write(f"Tidak WTP: {prediction_proba[0][0]:.2%}")
 
-    # 3. Lakukan prediksi menggunakan model
-    prediction = model.predict(input_scaled)
-    prediction_proba = model.predict_proba(input_scaled)
 
-    # 4. Tampilkan hasil prediksi
-    st.subheader("Hasil Prediksi Opini:")
-    if prediction[0] == 1:
-        st.success("Pemerintah Daerah diprediksi **MERAIH OPINI WTP** (Wajar Tanpa Pengecualian).")
-    else:
-        st.error("Pemerintah Daerah diprediksi **TIDAK MERAIH OPINI WTP**.")
+# ==============================================================================
+# Bagian 2: Uji Massal / Bulk Test (di Halaman Utama)
+# ==============================================================================
+st.header("Uji Model dengan File CSV (Bulk Test)")
+uploaded_file = st.file_uploader(
+    "Unggah file CSV Anda di sini. Pastikan formatnya sama dengan data training (termasuk kolom 'WTP' untuk perbandingan).",
+    type="csv"
+)
 
-    # Tampilkan probabilitas sebagai tingkat keyakinan
-    st.write("Tingkat Keyakinan Prediksi:")
-    proba_df = pd.DataFrame({
-        'Opini': ['Tidak WTP (0)', 'WTP (1)'],
-        'Probabilitas': prediction_proba[0]
-    })
-    st.dataframe(
-        proba_df.style.format({'Probabilitas': "{:.2%}"}),
-        use_container_width=True
-    )
-else:
-    # Pesan default saat halaman pertama kali dibuka
-    st.info("Silakan masukkan nilai indikator keuangan pada sidebar di sebelah kiri dan klik tombol prediksi untuk melihat hasilnya.")
+if uploaded_file is not None:
+    try:
+        # Baca file yang diunggah
+        df_bulk = pd.read_csv(uploaded_file, delimiter=';', decimal=',')
+        st.success("File berhasil diunggah dan dibaca.")
+        
+        # Pisahkan fitur dan target asli
+        X_bulk = df_bulk[features]
+        y_true = df_bulk['WTP']
+
+        # Lakukan pra-pemrosesan
+        X_imputed = imputer.transform(X_bulk)
+        X_scaled = scaler.transform(X_imputed)
+
+        # Lakukan prediksi
+        y_pred = model.predict(X_scaled)
+        
+        # Buat laporan hasil
+        df_result = df_bulk.copy()
+        df_result['Prediksi_Model'] = y_pred
+        df_result['Hasil'] = (df_result['WTP'] == df_result['Prediksi_Model']).replace({True: '✅ Benar', False: '❌ Salah'})
+        
+        # Hitung akurasi
+        accuracy = accuracy_score(y_true, y_pred)
+        
+        # Tampilkan ringkasan dan hasil detail
+        st.subheader("Ringkasan Hasil Uji Massal")
+        st.metric(label="Tingkat Akurasi pada File Uji", value=f"{accuracy:.2%}")
+        
+        st.subheader("Hasil Prediksi Detail")
+        st.dataframe(df_result)
+
+    except Exception as e:
+        st.error(f"Terjadi kesalahan saat memproses file: {e}")
+        st.warning("Pastikan file CSV Anda memiliki delimiter ';' dan pemisah desimal ',', serta berisi semua kolom yang diperlukan.")
