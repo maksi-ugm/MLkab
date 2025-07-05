@@ -86,7 +86,7 @@ with st.sidebar:
 # ==============================================================================
 st.header("Uji Model dengan File CSV (Bulk Test)")
 uploaded_file = st.file_uploader(
-    "Unggah file CSV Anda di sini. Pastikan formatnya sama dengan data training (termasuk kolom 'WTP' untuk perbandingan).",
+    "Unggah file CSV Anda di sini. Pastikan formatnya sama dengan data training (termasuk kolom 'WTP' dengan isian 1 untuk WTP dan 0 untuk non WTP untuk perbandingan).",
     type="csv"
 )
 
