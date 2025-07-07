@@ -2,126 +2,135 @@
 import streamlit as st
 import pandas as pd
 import joblib
-from sklearn.metrics import accuracy_score
+import altair as alt
 
-# --- Fungsi untuk memuat artefak (model, scaler, dll.) ---
+# --- Konfigurasi Halaman & Fungsi Pemuatan ---
+st.set_page_config(page_title="Analisis & Prediksi Opini WTP", page_icon="💡", layout="wide")
+
 @st.cache_resource
 def load_artifacts():
-    """Memuat model, imputer, dan scaler yang sudah dilatih."""
     try:
-        artifacts = joblib.load('artifacts_rf.pkl')
-        return artifacts
+        return joblib.load('artifacts_rf.pkl')
     except FileNotFoundError:
         return None
 
-# --- Memuat artefak di awal ---
 artifacts = load_artifacts()
 
-# --- Konfigurasi Halaman Aplikasi ---
-st.set_page_config(
-    page_title="Prediksi Opini WTP Pemda",
-    page_icon="🏆",
-    layout="wide"
-)
-
-# --- Judul dan Deskripsi Aplikasi ---
-st.title("🏆 Aplikasi Prediksi Opini Wajar Tanpa Pengecualian (WTP)")
-st.write(
-    """
-    Aplikasi ini menggunakan model **Random Forest** untuk memprediksi opini BPK.
-    Anda dapat melakukan **prediksi tunggal** melalui sidebar di sebelah kiri, atau melakukan
-    **uji massal (bulk test)** dengan mengunggah file CSV di bawah ini.
-    """
-)
-
-# Memeriksa apakah artefak berhasil dimuat sebelum melanjutkan
 if artifacts is None:
-    st.error(
-        "File 'artifacts_rf.pkl' tidak ditemukan. "
-        "Pastikan file model sudah dibuat dan berada di repositori yang sama dengan aplikasi ini."
-    )
+    st.error("File 'artifacts_rf.pkl' tidak ditemukan. Harap jalankan skrip training terlebih dahulu.")
     st.stop()
 
-# Membuka artefak
+# Membuka semua artefak
 model = artifacts['model']
 imputer = artifacts['imputer']
 scaler = artifacts['scaler']
 features = artifacts['features']
+benchmark = artifacts['benchmark']
 
-# ==============================================================================
-# Bagian 1: Prediksi Tunggal (di Sidebar)
-# ==============================================================================
+# --- Judul dan Deskripsi ---
+st.title("💡 Dashboard Analisis & Prediksi Opini WTP")
+st.write("""
+Aplikasi ini tidak hanya memprediksi **Opini Wajar Tanpa Pengecualian (WTP)**, tetapi juga menganalisis **faktor pendorong utama**, membandingkannya dengan **tolok ukur (benchmark)**, dan memberikan **rekomendasi kebijakan** secara otomatis.
+""")
+
+# --- Antarmuka Input di Sidebar ---
 with st.sidebar:
-    st.header("Prediksi Tunggal")
-    st.write("Masukkan 11 Indikator Keuangan:")
+    st.header("Masukkan Indikator Keuangan:")
     input_data = {}
     for feature in features:
-        input_data[feature] = st.number_input(
-            label=f"{feature}",
-            step=0.01,
-            format="%.4f",
-            key=f"single_{feature}" # Kunci unik untuk input tunggal
-        )
+        input_data[feature] = st.number_input(label=feature, step=0.01, format="%.4f")
     
-    if st.button("🚀 Lakukan Prediksi Tunggal"):
-        input_df = pd.DataFrame([input_data])[features]
-        input_imputed = imputer.transform(input_df)
-        input_scaled = scaler.transform(input_imputed)
-        prediction = model.predict(input_scaled)
-        prediction_proba = model.predict_proba(input_scaled)
+    predict_button = st.button("🚀 Analisis & Prediksi", type="primary")
 
-        st.subheader("Hasil Prediksi:")
-        if prediction[0] == 1:
-            st.success("Diprediksi **MERAIH OPINI WTP**.")
+# --- Logika Utama Aplikasi ---
+if predict_button:
+    # 1. Pra-pemrosesan & Prediksi
+    input_df = pd.DataFrame([input_data])[features]
+    input_imputed = imputer.transform(input_df)
+    input_scaled = scaler.transform(input_imputed)
+    prediction = model.predict(input_scaled)[0]
+    prediction_proba = model.predict_proba(input_scaled)[0]
+
+    # --- Tampilan Hasil Prediksi ---
+    st.header("Hasil Prediksi & Tingkat Keyakinan")
+    col1, col2 = st.columns(2)
+    with col1:
+        if prediction == 1:
+            st.success("Prediksi: **MERAIH OPINI WTP**")
         else:
-            st.error("Diprediksi **TIDAK MERAIH OPINI WTP**.")
-        
-        st.write("Probabilitas:")
-        st.write(f"WTP: {prediction_proba[0][1]:.2%}")
-        st.write(f"Tidak WTP: {prediction_proba[0][0]:.2%}")
+            st.error("Prediksi: **TIDAK MERAIH OPINI WTP**")
+    with col2:
+        st.metric(label="Keyakinan Model (Probabilitas WTP)", value=f"{prediction_proba[1]:.2%}")
 
+    st.divider()
 
-# ==============================================================================
-# Bagian 2: Uji Massal / Bulk Test (di Halaman Utama)
-# ==============================================================================
-st.header("Uji Model dengan File CSV (Bulk Test)")
-uploaded_file = st.file_uploader(
-    "Unggah file CSV Anda di sini. Pastikan formatnya sama dengan data training (termasuk kolom 'WTP' dengan isian 1 untuk WTP dan 0 untuk non WTP sebagai perbandingan).",
-    type="csv"
-)
+    # --- PRIORITAS #1: FAKTOR PENDORONG (KEY DRIVERS) ---
+    st.header("Analisis Faktor Pendorong Utama")
+    
+    # Membuat DataFrame untuk feature importance
+    importance_df = pd.DataFrame({
+        'Indikator': features,
+        'Nilai Penting': model.feature_importances_
+    }).sort_values('Nilai Penting', ascending=False).head(7) # Ambil 7 teratas
+    
+    # Visualisasi dengan Altair untuk kontrol lebih
+    chart = alt.Chart(importance_df).mark_bar().encode(
+        x=alt.X('Nilai Penting:Q', title='Tingkat Pengaruh'),
+        y=alt.Y('Indikator:N', sort='-x', title='Indikator Keuangan'),
+        tooltip=['Indikator', 'Nilai Penting']
+    ).properties(
+        title='Indikator Paling Berpengaruh Terhadap Prediksi'
+    )
+    st.altair_chart(chart, use_container_width=True)
 
-if uploaded_file is not None:
-    try:
-        # Baca file yang diunggah
-        df_bulk = pd.read_csv(uploaded_file, delimiter=';', decimal=',')
-        st.success("File berhasil diunggah dan dibaca.")
-        
-        # Pisahkan fitur dan target asli
-        X_bulk = df_bulk[features]
-        y_true = df_bulk['WTP']
+    # --- PRIORITAS #2: KONTEKS DENGAN TOLOK UKUR (BENCHMARKING) ---
+    st.header("Perbandingan dengan Tolok Ukur (Benchmark)")
+    
+    benchmark_df = pd.DataFrame({
+        'Indikator': features,
+        'Nilai Input': input_df.iloc[0],
+        'Rata-rata Benchmark': benchmark
+    }).reset_index(drop=True)
+    
+    st.dataframe(
+        benchmark_df.style.format({
+            'Nilai Input': '{:.4f}',
+            'Rata-rata Benchmark': '{:.4f}'
+        }).highlight_max(subset=['Nilai Input', 'Rata-rata Benchmark'], color='lightgreen', axis=1)
+          .highlight_min(subset=['Nilai Input', 'Rata-rata Benchmark'], color='#ffcccb', axis=1),
+        use_container_width=True
+    )
 
-        # Lakukan pra-pemrosesan
-        X_imputed = imputer.transform(X_bulk)
-        X_scaled = scaler.transform(X_imputed)
+    # --- PRIORITAS #3: REKOMENDASI OTOMATIS BERBASIS ATURAN ---
+    st.header("Rekomendasi Kebijakan Otomatis")
 
-        # Lakukan prediksi
-        y_pred = model.predict(X_scaled)
-        
-        # Buat laporan hasil
-        df_result = df_bulk.copy()
-        df_result['Prediksi_Model'] = y_pred
-        df_result['Hasil'] = (df_result['WTP'] == df_result['Prediksi_Model']).replace({True: '✅ Benar', False: '❌ Salah'})
-        
-        # Hitung akurasi
-        accuracy = accuracy_score(y_true, y_pred)
-        
-        # Tampilkan ringkasan dan hasil detail
-        st.subheader("Ringkasan Hasil Uji Massal")
-        st.metric(label="Tingkat Akurasi pada File Uji", value=f"{accuracy:.2%}")
-        
-        st.subheader("Hasil Prediksi Detail")
-        st.dataframe(df_result)
+    # Ambil 3 pendorong teratas
+    top_drivers = importance_df['Indikator'].head(3).tolist()
+    recommendations = []
 
-    except Exception as e:
-        st.error(f"Terjadi kesalahan saat memproses file: {e}")
-        st.warning("Pastikan file CSV Anda memiliki delimiter ';' dan pemisah desimal ',', serta berisi semua kolom yang diperlukan.")
+    # Aturan sederhana (bisa dikembangkan lebih lanjut)
+    if 'Kemandirian Keuangan' in top_drivers and input_df['Kemandirian Keuangan'].iloc[0] < benchmark['Kemandirian Keuangan']:
+        recommendations.append("**Kemandirian Keuangan Rendah:** Prioritaskan program intensifikasi dan ekstensifikasi Pendapatan Asli Daerah (PAD) untuk meningkatkan kemandirian fiskal.")
+    
+    if 'Solvabilitas Anggaran' in top_drivers and input_df['Solvabilitas Anggaran'].iloc[0] < benchmark['Solvabilitas Anggaran']:
+        recommendations.append("**Solvabilitas Anggaran Kritis:** Lakukan efisiensi belanja, terutama belanja operasional, dan tinjau kembali proyeksi pendapatan agar lebih realistis.")
+
+    if 'Solvabilitas Jangka Panjang' in top_drivers and input_df['Solvabilitas Jangka Panjang'].iloc[0] < benchmark['Solvabilitas Jangka Panjang']:
+        recommendations.append("**Solvabilitas Jangka Panjang Terancam:** Perlu peninjauan atas struktur aset dan kewajiban jangka panjang. Pertimbangkan restrukturisasi utang jika memungkinkan.")
+
+    if 'Rasio Efektifitas Pengelolaan Pendapatan' in top_drivers and input_df['Rasio Efektifitas Pengelolaan Pendapatan'].iloc[0] < benchmark['Rasio Efektifitas Pengelolaan Pendapatan']:
+         recommendations.append("**Efektivitas PAD Perlu Ditingkatkan:** Tinjau kembali potensi pajak dan retribusi daerah yang belum optimal. Manfaatkan teknologi untuk mempermudah pembayaran dan pengawasan.")
+
+    if recommendations:
+        for rec in recommendations:
+            st.warning(rec)
+    else:
+        st.success("Secara umum, indikator-indikator kunci sudah menunjukkan performa yang baik. Pertahankan!")
+
+    # --- Link ke Dashboard Eksternal ---
+    st.divider()
+    st.info("Untuk analisis perbandingan yang lebih mendalam antar pemerintah daerah, kunjungi dashboard eksternal kami.")
+    st.page_link("https://maksikeuda.streamlit.app/", label="Buka Dashboard Perbandingan Pemda", icon="📊")
+
+else:
+    st.info("Silakan masukkan nilai pada sidebar dan klik tombol 'Analisis & Prediksi' untuk memulai.")
