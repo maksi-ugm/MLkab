@@ -10,7 +10,6 @@ st.set_page_config(page_title="Dashboard Diagnostik Opini WTP", page_icon="🩺"
 @st.cache_resource
 def load_artifacts():
     try:
-        # Nama file artefak dari skrip training hybrid
         return joblib.load('artifacts_hybrid.pkl')
     except FileNotFoundError:
         return None
@@ -57,25 +56,24 @@ with st.expander("Lihat Cara Membaca Hasil Analisis Ini"):
                 - **(-) Negatif**: Nilai yang lebih tinggi pada indikator ini justru menjadi **penghambat**. Ini adalah area yang perlu menjadi fokus perbaikan.
     """)
 
-# --- Antarmuka Input di Sidebar dengan Tooltips ---
+# --- Antarmuka Input di Sidebar (VERSI PERBAIKAN) ---
 with st.sidebar:
     st.header("Masukkan Indikator")
     input_data = {}
     
-    # Loop untuk membuat input field dengan tooltip
+    # Loop untuk membuat input field dengan tooltip bawaan Streamlit
     for feature in features:
-        # Buat kolom untuk input dan ikon info
-        col1, col2 = st.columns([0.9, 0.1])
-        with col1:
-            input_data[feature] = st.number_input(label=feature, step=0.01, format="%.4f", label_visibility="collapsed")
-        with col2:
-            # Gunakan st.markdown untuk membuat ikon info dengan tooltip HTML
-            st.markdown(f'<div style="padding-top: 30px; text-align: right;" title="{tooltip_texts.get(feature, "")}">&#9432;</div>', unsafe_allow_html=True)
+        input_data[feature] = st.number_input(
+            label=feature, # Label akan muncul kembali
+            help=tooltip_texts.get(feature, ""), # Gunakan parameter 'help' untuk tooltip
+            step=0.01,
+            format="%.4f"
+        )
     
     st.markdown("---")
     predict_button = st.button("🚀 Lakukan Analisis Diagnostik", type="primary", use_container_width=True)
 
-# --- Logika Utama Aplikasi ---
+# --- Logika Utama Aplikasi (Tidak ada perubahan di sini) ---
 if predict_button:
     # Pra-pemrosesan & Prediksi
     input_df = pd.DataFrame([input_data])[features]
@@ -94,17 +92,13 @@ if predict_button:
 
     st.divider()
     
-    # --- ANALISIS FAKTOR PENDORONG DENGAN ARAH PENGARUH ---
     st.header("Analisis Faktor Pendorong Utama (Key Drivers)")
-    
     diagnostics_df = pd.DataFrame({
         'Indikator': features,
         'Tingkat Pengaruh': model_rf.feature_importances_,
         'Koefisien LR': model_lr.coef_[0],
         'Nilai Input': input_df.iloc[0]
     })
-    
-    # Tambahkan label arah (+/-)
     diagnostics_df['Arah Tanda'] = diagnostics_df['Koefisien LR'].apply(lambda x: '(+)' if x > 0 else '(-)')
     diagnostics_df['Arah Label'] = diagnostics_df['Koefisien LR'].apply(lambda x: 'Positif' if x > 0 else 'Negatif')
     diagnostics_df['Indikator Tampilan'] = diagnostics_df['Indikator'] + ' ' + diagnostics_df['Arah Tanda']
@@ -113,14 +107,11 @@ if predict_button:
     chart = alt.Chart(diagnostics_df).mark_bar().encode(
         x=alt.X('Tingkat Pengaruh:Q', title='Tingkat Pengaruh'),
         y=alt.Y('Indikator Tampilan:N', sort='-x', title='Indikator dan Arah Pengaruh'),
-        color=alt.Color('Arah Label:N',
-                        scale=alt.Scale(domain=['Positif', 'Negatif'], range=['#2ECC71', '#E74C3C']),
-                        title="Arah Pengaruh"),
+        color=alt.Color('Arah Label:N', scale=alt.Scale(domain=['Positif', 'Negatif'], range=['#2ECC71', '#E74C3C']), title="Arah Pengaruh"),
         tooltip=[alt.Tooltip('Indikator:N'), alt.Tooltip('Nilai Input:Q', format='.4f')]
     ).properties(title='Indikator Paling Berpengaruh Terhadap Prediksi')
     st.altair_chart(chart, use_container_width=True)
 
-    # --- REKOMENDASI OTOMATIS (Sama seperti sebelumnya) ---
     st.header("Rekomendasi Kebijakan Otomatis")
     negative_drivers = diagnostics_df[diagnostics_df['Arah Label'] == 'Negatif']
     recommendations = []
