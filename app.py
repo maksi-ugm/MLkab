@@ -42,43 +42,30 @@ with st.expander("Lihat Cara Membaca Hasil Analisis Ini"):
         - **Rekomendasi Kebijakan**: Saran praktis yang dihasilkan otomatis berdasarkan faktor pendorong negatif yang paling signifikan.
     """)
 
-# --- Antarmuka Input di Sidebar ---
+# --- Antarmuka Input di Sidebar dengan Layout Kolom ---
 with st.sidebar:
-    # --- Blok CSS Agresif untuk Memadatkan Sidebar ---
-    st.markdown("""
-        <style>
-            /* Mengatur padding utama dari sidebar */
-            [data-testid="stSidebar"] > div:first-child {
-                padding-top: 1rem;
-                padding-bottom: 1rem;
-            }
-            /* Menargetkan semua label dari widget */
-            [data-testid="stSidebar"] .st-emotion-cache-1qg05j4 p {
-                font-size: 13px; /* Ukuran font lebih kecil */
-                margin-bottom: 0.1rem; /* Jarak bawah label sangat kecil */
-            }
-            /* Menargetkan semua container widget untuk mengurangi jarak antar widget */
-            [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > [style*="gap"] > div {
-                 margin-bottom: -10px; /* Tarik widget ke atas, kurangi jarak */
-            }
-             /* Mengatur header di sidebar */
-            [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-                font-size: 16px;
-                margin-bottom: 0.5rem;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-    
     st.header("Masukkan Indikator")
-    input_data = {}
-    for feature in features:
-        input_data[feature] = st.number_input(label=feature, step=0.01, format="%.4f")
     
+    # Buat dua kolom di dalam sidebar
+    col1, col2 = st.columns(2)
+    
+    input_data = {}
+    
+    # Bagi 11 fitur ke dalam dua kolom (6 di kiri, 5 di kanan)
+    for i, feature in enumerate(features):
+        if i < 6:
+            with col1:
+                input_data[feature] = st.number_input(label=feature, step=0.01, format="%.4f")
+        else:
+            with col2:
+                input_data[feature] = st.number_input(label=feature, step=0.01, format="%.4f")
+    
+    st.markdown("---") # Garis pemisah
     predict_button = st.button("🚀 Lakukan Analisis", type="primary", use_container_width=True)
 
 # --- Logika Utama Aplikasi (Tidak ada perubahan di sini) ---
 if predict_button:
-    # (Sisa dari logika utama aplikasi tetap sama persis)
+    # Pra-pemrosesan & Prediksi
     input_df = pd.DataFrame([input_data])[features]
     input_imputed = imputer.transform(input_df)
     input_scaled = scaler.transform(input_imputed)
@@ -86,11 +73,11 @@ if predict_button:
     prediction_proba = model_rf.predict_proba(input_scaled)[0]
 
     st.header("Hasil Prediksi & Tingkat Keyakinan")
-    col1, col2 = st.columns(2)
-    with col1:
+    res_col1, res_col2 = st.columns(2)
+    with res_col1:
         if prediction == 1: st.success("Prediksi: **MERAIH OPINI WTP**")
         else: st.error("Prediksi: **TIDAK MERAIH OPINI WTP**")
-    with col2:
+    with res_col2:
         st.metric(label="Keyakinan Model (Probabilitas WTP)", value=f"{prediction_proba[1]:.2%}")
 
     st.divider()
