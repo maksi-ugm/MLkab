@@ -44,35 +44,32 @@ with st.expander("Lihat Cara Membaca Hasil Analisis Ini"):
 
 # --- Antarmuka Input di Sidebar ---
 with st.sidebar:
-    # --- Blok CSS Kuat untuk Memadatkan Sidebar ---
+    # --- Blok CSS Agresif untuk Memadatkan Sidebar ---
     st.markdown("""
         <style>
-            /* Target semua elemen di dalam sidebar */
-            [data-testid="stSidebar"] * {
-                line-height: 1.2; /* Kurangi jarak antar baris */
+            /* Mengatur padding utama dari sidebar */
+            [data-testid="stSidebar"] > div:first-child {
+                padding-top: 1rem;
+                padding-bottom: 1rem;
             }
-            /* Target header di sidebar */
-            [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-                font-size: 18px; /* Perkecil ukuran header */
-                margin-bottom: 0.5rem; /* Kurangi margin bawah */
-            }
-            /* Target label dari widget input angka */
+            /* Menargetkan semua label dari widget */
             [data-testid="stSidebar"] .st-emotion-cache-1qg05j4 p {
-                 font-size: 14px; /* Perkecil font label */
-                 margin-bottom: 0.1rem; /* Kurangi jarak bawah label */
+                font-size: 13px; /* Ukuran font lebih kecil */
+                margin-bottom: 0.1rem; /* Jarak bawah label sangat kecil */
             }
-            /* Target container dari setiap widget input */
-            [data-testid="stSidebar"] .st-emotion-cache-ue6h4q {
-                margin-bottom: 0.1rem; /* Kurangi jarak antar widget */
+            /* Menargetkan semua container widget untuk mengurangi jarak antar widget */
+            [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > [style*="gap"] > div {
+                 margin-bottom: -10px; /* Tarik widget ke atas, kurangi jarak */
             }
-            /* Target tombol utama di sidebar */
-            [data-testid="stSidebar"] .stButton > button {
-                margin-top: 1rem; /* Beri sedikit jarak atas untuk tombol */
+             /* Mengatur header di sidebar */
+            [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+                font-size: 16px;
+                margin-bottom: 0.5rem;
             }
         </style>
     """, unsafe_allow_html=True)
     
-    st.header("Masukkan Indikator:")
+    st.header("Masukkan Indikator")
     input_data = {}
     for feature in features:
         input_data[feature] = st.number_input(label=feature, step=0.01, format="%.4f")
@@ -81,7 +78,7 @@ with st.sidebar:
 
 # --- Logika Utama Aplikasi (Tidak ada perubahan di sini) ---
 if predict_button:
-    # Pra-pemrosesan & Prediksi
+    # (Sisa dari logika utama aplikasi tetap sama persis)
     input_df = pd.DataFrame([input_data])[features]
     input_imputed = imputer.transform(input_df)
     input_scaled = scaler.transform(input_imputed)
